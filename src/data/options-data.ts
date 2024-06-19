@@ -10,7 +10,7 @@ export type OptionsData = {
   expiration_date: string;
 };
 
-const sampleData: OptionsData[] = [
+export const sampleData: OptionsData[] = [
   {
     strike_price: 100,
     type: "Call",
@@ -44,5 +44,3 @@ const sampleData: OptionsData[] = [
     expiration_date: "2025-12-17T00:00:00Z",
   },
 ];
-
-export default sampleData;
