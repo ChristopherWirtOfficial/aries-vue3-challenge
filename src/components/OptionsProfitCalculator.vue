@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { Scatter } from 'vue-chartjs';
-import { sampleData } from '../data/options-data';
+import { OptionsData } from '../data/options-data';
 import { ref, computed } from 'vue';
 
 import OptionCard from './OptionCard.vue';
+
+const props = defineProps<{
+    optionsData: OptionsData[],
+}>();
 
 const chartOptions = {
     responsive: true,
@@ -25,28 +29,20 @@ const chartOptions = {
 };
 
 const options = ref([
-  { id: 0, enabled: true, color: '#f87979' },
-  { id: 1, enabled: false, color: '#4499EE'},
-  { id: 2, enabled: false, color: '#99EE21'},
-  { id: 3, enabled: false, color: '#11AAAA'},
+  { id: 0, enabled: true },
+  { id: 1, enabled: false },
+  { id: 2, enabled: false },
+  { id: 3, enabled: false },
 ]);
 
 const selectedOptions = computed(() => options.value.filter(option => option.enabled));
 
 const N_STEPS = 20;
 
-type OptionsChartData = {
-    id: number;
-    potentialPrices: number[];
-    potentialProfitOrLoss: number[];
-    strikePrice: number;
-    premium: number;
-};
-
 // Calculate our domain based on the selected options
 const domain = computed(() => {
     const minMax = selectedOptions.value.reduce((acc, { id }) => {
-        const option = sampleData[id];
+        const option = props.optionsData[id];
         const premium = option.long_short === 'long' ? option.ask : option.bid;
 
         return {
@@ -65,7 +61,7 @@ const xValues = computed(() => {
 
     // Always include the break-even price for each option
     const defaultXValues = selectedOptions.value.map(({ id }) => {
-        const option = sampleData[id];
+        const option = props.optionsData[id];
         const premium = option.long_short === 'long' ? option.ask : option.bid;
         
         return option.strike_price + premium;
@@ -86,7 +82,7 @@ const xValues = computed(() => {
 const profitLossValues = computed(() => {
     return xValues.value.map(price => {
         return selectedOptions.value.reduce((acc, { id }) => {
-            const option = sampleData[id];
+            const option = props.optionsData[id];
             const premium = option.long_short === 'long' ? option.ask : option.bid;
             let profitLoss = 0;
 
@@ -139,12 +135,14 @@ const chartData = computed(() => ({
         />
     </div>
         <div class="options-list">
-            <OptionCard
-                v-for="(option, index) in options"
-                :key="option.id"
-                :option="sampleData[option.id]"
-                v-model:selected="option.enabled"
-            />
+            <div v-for="option in options">
+                <OptionCard
+                    v-if="!!props.optionsData?.[option.id]"
+                    :key="option.id"
+                    :option="props.optionsData[option.id]"
+                    v-model:selected="option.enabled"
+                />
+            </div>
         </div>
     </div>
 </template>
