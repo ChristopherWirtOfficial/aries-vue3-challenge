@@ -3,6 +3,8 @@ import { Scatter } from 'vue-chartjs';
 import { sampleData } from '../data/options-data';
 import { ref, computed } from 'vue';
 
+import OptionCard from './OptionCard.vue';
+
 const chartOptions = {
     responsive: true,
     plugins: {
@@ -41,71 +43,108 @@ type OptionsChartData = {
     premium: number;
 };
 
-const potentialExpiryPriceSteps = computed<OptionsChartData[]>(() => {
-    const ret = selectedOptions.value.map(({ id }) => {
+// Calculate our domain based on the selected options
+const domain = computed(() => {
+    const minMax = selectedOptions.value.reduce((acc, { id }) => {
         const option = sampleData[id];
         const premium = option.long_short === 'long' ? option.ask : option.bid;
 
-        // From -2.5*premium to 2.5*premium, which we'll then calculate potentialPrices from based on strike_price + potentialPriceDeviation
-        const potentialPriceDeviations = Array.from({ length: N_STEPS }, (_, i) => -2.5 + (i / (N_STEPS )) * 10);
-        const potentialPrices = potentialPriceDeviations
-            .map(deviation => option.strike_price + deviation * premium)
-            .map(price => Math.round(price * 100) / 100);
-
-        // We can then calculate the potential profits (or losses) at each step based on the option type, strike price, and premium
-        const potentialProfitOrLoss = potentialPrices.map(price => price - option.strike_price - premium);
-
         return {
-            id,
-            potentialPrices,
-            potentialProfitOrLoss,
-            strikePrice: option.strike_price,
-            premium,
+            min: Math.min(acc.min, option.strike_price - 2.5 * premium),
+            max: Math.max(acc.max, option.strike_price + 2.5 * premium),
         };
-    });
+    }, { min: Infinity, max: -Infinity });
 
-    return ret;
+    return minMax;
 });
 
+
+const xValues = computed(() => {
+    const { min, max } = domain.value;
+    const iterativeSteps = Array.from({ length: N_STEPS }, (_, i) => min + (i / (N_STEPS - 1)) * (max - min));
+
+    // Always include the break-even price for each option
+    const defaultXValues = selectedOptions.value.map(({ id }) => {
+        const option = sampleData[id];
+        const premium = option.long_short === 'long' ? option.ask : option.bid;
+        
+        return option.strike_price + premium;
+    });
+
+    // Combine our two sets of x values and unique/sort them
+    const xValuesSet = new Set([...iterativeSteps, ...defaultXValues]);
+
+    return Array.from(xValuesSet)
+        .sort((a, b) => a - b)
+        .map(price => Math.round(price * 100) / 100);
+});
+
+
+
+// Construct our y values according to each x value as the price of the underlying instrument
+//   if all selected options are executed for that price
+const profitLossValues = computed(() => {
+    return xValues.value.map(price => {
+        return selectedOptions.value.reduce((acc, { id }) => {
+            const option = sampleData[id];
+            const premium = option.long_short === 'long' ? option.ask : option.bid;
+            let profitLoss = 0;
+
+            if (option.type === 'Call') {
+                if (option.long_short === 'long') {
+                    // Long Call
+                    profitLoss = price > option.strike_price ? price - option.strike_price - premium : -premium;
+                } else {
+                    // Short Call
+                    profitLoss = price > option.strike_price ? premium - (price - option.strike_price) : premium;
+                }
+            } else if (option.type === 'Put') {
+                if (option.long_short === 'long') {
+                    // Long Put
+                    profitLoss = price < option.strike_price ? option.strike_price - price - premium : -premium;
+                } else {
+                    // Short Put
+                    profitLoss = price < option.strike_price ? premium - (option.strike_price - price) : premium;
+                }
+            }
+
+            return acc + profitLoss;
+        }, 0);
+    });
+});
+
+
 const chartData = computed(() => ({
-    datasets: potentialExpiryPriceSteps.value.map(option => ({
-        label: `Option ${option.id}`,
-        data: option.potentialPrices.map((price, i) => ({ x: price, y: option.potentialProfitOrLoss[i] })),
-        backgroundColor: options.value[option.id].color,
-    })),
+    datasets: [{
+        label: 'Total Profit/Loss',
+        data: xValues.value.map((price, index) => ({
+            x: price,
+            y: profitLossValues.value[index],
+        })),
+        backgroundColor: '#f87979',
+    }],
 }));
 
-
-/*
-    TODO: Changes to make
-    - Go back to a (dyanmic) fixed set of prices. Based on the min/max price, have N steps between the global min/max price
-    - Specifically insert (unless present) the break-even price of each option into our set of X values
-    - ONLY THEN after constructing the X values do we calculate the profits exercising any given option at every X value
-    - Then we add the profit (or loss, if negative) at each X value to get our actual Y value for total proift/loss at each price
-
-    All of this is because these options are for the same instrument. You want to maximize the profit over all of the selected options
-       as if they were all going to be executed by the same person, not individually. 
-
-    We'll then be able to find which options you should select as a function of the expected exercise price
-
-    TODO: Stretch Goals
-    - Create small cards for each option, and place them vertically on the side of the graph. Both display and selection controls.
-*/
-
-console.log(potentialExpiryPriceSteps.value);
 </script>
 
 <template>
     <h1>Options Profit Calculator</h1>
-    <Scatter
-        id="options-profit-line-chart"
-        :options="chartOptions"
-        :data="chartData"
-    />
-    <div class="options-list">
-        <div v-for="(option, index) in options" :key="index">
-        <input type="checkbox" v-model="option.enabled" />
-        <label>Option {{ option.id }}</label>
+    <div style="display: flex; gap: 1rem;">
+    <div style="max-width: 100vw">
+        <Scatter
+            width="800px"
+            id="options-profit-line-chart"
+            :options="chartOptions"
+            :data="chartData"
+        />
+    </div>
+        <div class="options-list">
+            <OptionCard
+                v-for="(option, index) in options"
+                :key="option.id"
+                :option="sampleData[option.id]"
+                v-model:selected="option.enabled"
+            />
         </div>
     </div>
 </template>
@@ -114,6 +153,7 @@ console.log(potentialExpiryPriceSteps.value);
 .options-list {
     justify-content: center;
     display: flex;
+    flex-direction: column;
     gap: 10px;
 }
 </style>
