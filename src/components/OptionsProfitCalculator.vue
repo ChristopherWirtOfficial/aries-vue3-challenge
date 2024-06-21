@@ -9,6 +9,11 @@ const props = defineProps<{
     optionsData: OptionsData[],
 }>();
 
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+});
+
 const chartOptions = {
     responsive: true,
     plugins: {
@@ -117,6 +122,14 @@ const breakEvenPoints = computed(() => {
     return bePoints;
 });
 
+const maxProfit = computed(() => {
+    return Math.max(...profitLossValues.value);
+});
+
+const maxLoss = computed(() => {
+    return Math.min(...profitLossValues.value);
+});
+
 
 const chartData = computed(() => ({
     datasets: [{
@@ -137,7 +150,7 @@ const chartData = computed(() => ({
         border: '3px',
         borderColor: 'white',
         pointRadius: 5
-    }
+    },
 ],
 }));
 
@@ -165,6 +178,10 @@ const chartData = computed(() => ({
             </div>
         </div>
     </div>
+    <div class='max-profit-loss'>
+        <p>Maximum Profit: {{ currencyFormatter.format(maxProfit) }}</p>
+        <p>Maximum Loss: {{ currencyFormatter.format(maxLoss) }}</p>
+    </div>
 </template>
 
 <style scoped>
@@ -173,5 +190,9 @@ const chartData = computed(() => ({
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.max-profit-loss {
+    width: fit-content;
 }
 </style>
