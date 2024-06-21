@@ -59,20 +59,7 @@ const xValues = computed(() => {
     const { min, max } = domain.value;
     const iterativeSteps = Array.from({ length: N_STEPS }, (_, i) => min + (i / (N_STEPS - 1)) * (max - min));
 
-    // Always include the break-even price for each option
-    const defaultXValues = selectedOptions.value.map(({ id }) => {
-        const option = props.optionsData[id];
-        const premium = option.long_short === 'long' ? option.ask : option.bid;
-        
-        return option.strike_price + premium;
-    });
-
-    // Combine our two sets of x values and unique/sort them
-    const xValuesSet = new Set([...iterativeSteps, ...defaultXValues]);
-
-    return Array.from(xValuesSet)
-        .sort((a, b) => a - b)
-        .map(price => Math.round(price * 100) / 100);
+    return iterativeSteps;
 });
 
 
@@ -110,6 +97,27 @@ const profitLossValues = computed(() => {
 });
 
 
+const breakEvenPoints = computed(() => {
+    let bePoints: number[] = [];
+    const prices = xValues.value;
+    const profits = profitLossValues.value;
+    
+    // Iterate over the profit/loss array to find where it crosses zero
+    for (let i = 1; i < profits.length; i++) {
+        if (profits[i] === 0) {
+            bePoints.push(prices[i]);
+        } else if (profits[i] * profits[i - 1] < 0) { // Change in sign indicates crossing zero
+            // Linear interpolation to find the more accurate break-even point
+            const x1 = prices[i - 1], y1 = profits[i - 1];
+            const x2 = prices[i], y2 = profits[i];
+            const beX = x1 - y1 * (x2 - x1) / (y2 - y1); // Interpolation formula
+            bePoints.push(beX);
+        }
+    }
+    return bePoints;
+});
+
+
 const chartData = computed(() => ({
     datasets: [{
         label: 'Total Profit/Loss',
@@ -118,7 +126,19 @@ const chartData = computed(() => ({
             y: profitLossValues.value[index],
         })),
         backgroundColor: '#f87979',
-    }],
+    },
+    {
+        label: 'Break-even',
+        data: breakEvenPoints.value.map(point => ({
+            x: point,
+            y: 0,
+        })),
+        backgroundColor: '#A98989',
+        border: '3px',
+        borderColor: 'white',
+        pointRadius: 5
+    }
+],
 }));
 
 </script>
@@ -126,14 +146,14 @@ const chartData = computed(() => ({
 <template>
     <h1>Options Profit Calculator</h1>
     <div style="display: flex; gap: 1rem;">
-    <div style="max-width: 100vw">
-        <Scatter
-            width="800px"
-            id="options-profit-line-chart"
-            :options="chartOptions"
-            :data="chartData"
-        />
-    </div>
+        <div style="max-width: 100vw">
+            <Scatter
+                width="800px"
+                id="options-profit-line-chart"
+                :options="chartOptions"
+                :data="chartData"
+            />
+        </div>
         <div class="options-list">
             <div v-for="option in options">
                 <OptionCard
